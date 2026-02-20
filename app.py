@@ -291,7 +291,14 @@ def show_dashboard(user_role):
                     st.error(f"Error reading file: {e}")
         else:
             user_email = st.session_state["user"]["email"]
-            st.dataframe(database.get_recent_aliquots(user_email, 20), use_container_width=True)
+            # get_recent_aliquots returns a dataframe. 
+            recent_df = database.get_recent_aliquots(user_email, 20)
+            if not recent_df.empty:
+                recent_df = recent_df.reset_index(drop=True)
+            # st.dataframe's native toolbar allows downloading. We can disable it via column_config or by just using st.table if we want it static.
+            # actually st.dataframe doesn't have a direct "disable download" flag for the toolbar yet in many versions,
+            # but using st.table removes all interactivity including downloading.
+            st.table(recent_df)
 
 def show_store_aliquots():
     st.header("Store New Aliquots")
