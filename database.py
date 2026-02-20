@@ -33,7 +33,7 @@ def init_db():
     if df_users.empty or 'email' not in df_users.columns:
         # Create base dataframe
         df_users = pd.DataFrame({
-            "email": ["FrInventoryMgmt@gmail.com"],
+            "email": ["kartucson@gmail.com"],
             "password": ["master123"],
             "role": ["master"],
             "status": ["approved"]
@@ -127,7 +127,7 @@ def change_password(email, new_password):
         write_sheet_data("users", df)
 
 def remove_user(email):
-    if email == 'FrInventoryMgmt@gmail.com':
+    if email == 'kartucson@gmail.com':
         return False, "Cannot delete master user."
     df = get_sheet_data("users")
     df = df[df['email'] != email]
