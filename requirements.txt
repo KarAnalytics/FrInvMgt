@@ -8,3 +8,4 @@ st-gsheets-connection
 gspread
 python-dotenv
 pyarrow
+streamlit-gsheets
