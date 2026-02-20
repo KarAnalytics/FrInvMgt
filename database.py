@@ -28,6 +28,10 @@ def write_sheet_data(sheet_name, df):
     get_sheet_data.clear(sheet_name)
 
 def init_db():
+    if 'db_initialized' in st.session_state:
+        return
+        
+    st.session_state['db_initialized'] = True
     # Because Google Sheets must be created manually and shared with the Service Account,
     # we cannot "create" tables out of nowhere. We assume the worksheets "users", "boxes", and "aliquots" 
     # already exist in the connected spreadsheet document.
