@@ -261,7 +261,7 @@ def show_dashboard(user_role):
     else:
         if user_role == 'master':
             if not full_df.empty:
-                full_df.index = [""] * len(full_df)
+                full_df.index = range(1, len(full_df) + 1)
             st.dataframe(full_df, use_container_width=True)
             
             csv = full_df.to_csv(index=False).encode('utf-8')
@@ -296,8 +296,8 @@ def show_dashboard(user_role):
             # get_recent_aliquots returns a dataframe. 
             recent_df = database.get_recent_aliquots(user_email, 20)
             if not recent_df.empty:
-                # Remove index visibility manually for older Streamlit versions
-                recent_df.index = [""] * len(recent_df)
+                # Use a simple sequential row number as the index
+                recent_df.index = range(1, len(recent_df) + 1)
             st.dataframe(recent_df, use_container_width=True)
 
 def show_store_aliquots():
