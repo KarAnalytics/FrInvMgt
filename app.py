@@ -316,12 +316,13 @@ def show_store_aliquots():
             
         try:
             allocations = []
+            user_email = st.session_state["user"]["email"]
             if num_plasma > 0:
-                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Plasma", num_plasma))
+                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Plasma", num_plasma, user_email))
             if num_serum > 0:
-                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Serum", num_serum))
+                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Serum", num_serum, user_email))
             if num_urine > 0:
-                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Urine", num_urine))
+                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Urine", num_urine, user_email))
                 
             st.success(f"Successfully allocated {len(allocations)} aliquots!")
             
@@ -362,11 +363,13 @@ def show_scan_aliquots():
     
     with st.form("scan_form", clear_on_submit=True):
         loc_id = st.text_input("Aliquot Location ID (e.g. D1R1L1B1X1Y1)")
+        sent_to = st.text_input("Destination (optional, if checking out)")
         submitted = st.form_submit_button("Submit / Scan")
         
         if submitted:
             if loc_id:
-                success, msg, new_status = database.toggle_aliquot_status(loc_id.strip().upper())
+                user_email = st.session_state["user"]["email"]
+                success, msg, new_status = database.toggle_aliquot_status(loc_id.strip().upper(), user_email, sent_to.strip())
                 if success:
                     st.success(msg)
                 else:

@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import re
+from datetime import datetime
 
 # IMPORTANT: You must setup your .streamlit/secrets.toml with your Google Service Account
 # and provide `spreadsheet` URL inside the `[connections.gsheets]` block.
@@ -44,7 +45,9 @@ def init_db():
             "email": ["kartucson@gmail.com"],
             "password": ["master123"],
             "role": ["master"],
-            "status": ["approved"]
+            "status": ["approved"],
+            "checkin_count": [0],
+            "checkout_count": [0]
         })
         write_sheet_data("users", df_users)
     
@@ -75,7 +78,9 @@ def init_db():
     if df_aliquots.empty or 'id' not in df_aliquots.columns:
         df_aliquots = pd.DataFrame(columns=[
             "id", "location_id", "box_id", "x_coord", "y_coord", 
-            "patientvisit_id", "specimen_type", "status"
+            "patientvisit_id", "specimen_type", "status",
+            "sent_to", "stored_time", "days_since_stored",
+            "checkout_time", "checkin_user_id", "checkout_user_id"
         ])
         write_sheet_data("aliquots", df_aliquots)
 
@@ -98,7 +103,9 @@ def add_pending_user(email):
         "email": [email],
         "password": [""],
         "role": ["user"],
-        "status": ["pending"]
+        "status": ["pending"],
+        "checkin_count": [0],
+        "checkout_count": [0]
     })
     df = pd.concat([df, new_user], ignore_index=True)
     write_sheet_data("users", df)
@@ -121,7 +128,9 @@ def add_approved_user(email, password):
         "email": [email],
         "password": [password],
         "role": ["user"],
-        "status": ["approved"]
+        "status": ["approved"],
+        "checkin_count": [0],
+        "checkout_count": [0]
     })
     df = pd.concat([df, new_user], ignore_index=True)
     write_sheet_data("users", df)
@@ -162,7 +171,7 @@ def extract_patient_id(pv_id):
         return m.group(1)
     return pv_id
 
-def allocate_aliquots(patientvisit_id, aliquot_type, count):
+def allocate_aliquots(patientvisit_id, aliquot_type, count, user_email):
     if count <= 0:
         return []
 
@@ -272,6 +281,7 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count):
         
     new_rows = []
     allocated = []
+    curr_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for (x, y) in spots_to_use:
         location_id = f"D{d}R{r}L{l}B{b}X{x}Y{y}"
         new_rows.append({
@@ -282,7 +292,13 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count):
             "y_coord": y,
             "patientvisit_id": patientvisit_id,
             "specimen_type": aliquot_type,
-            "status": "Stored"
+            "status": "Stored",
+            "sent_to": "",
+            "stored_time": curr_time,
+            "days_since_stored": 0,
+            "checkout_time": "",
+            "checkin_user_id": user_email,
+            "checkout_user_id": ""
         })
         allocated.append({
             'location_id': location_id,
@@ -302,9 +318,17 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count):
     df_boxes.loc[idx, 'specimen_type'] = aliquot_type
     write_sheet_data("boxes", df_boxes)
     
+    # 5. Update user checkin count
+    df_users = get_sheet_data("users")
+    u_idx = df_users[df_users['email'] == user_email].index
+    if not u_idx.empty:
+        df_users['checkin_count'] = pd.to_numeric(df_users['checkin_count'], errors='coerce').fillna(0)
+        df_users.loc[u_idx, 'checkin_count'] += count
+        write_sheet_data("users", df_users)
+    
     return allocated
 
-def toggle_aliquot_status(location_id):
+def toggle_aliquot_status(location_id, user_email, sent_to=""):
     df = get_sheet_data("aliquots")
     if df.empty:
         return False, "Aliquot not found.", None
@@ -320,8 +344,33 @@ def toggle_aliquot_status(location_id):
     curr_status = df.loc[latest_idx, 'status']
     new_status = 'Checked Out' if curr_status == 'Stored' else 'Stored'
     
+    curr_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    df_users = get_sheet_data("users")
+    u_idx = df_users[df_users['email'] == user_email].index
+    if not u_idx.empty:
+        df_users['checkin_count'] = pd.to_numeric(df_users.get('checkin_count', 0), errors='coerce').fillna(0)
+        df_users['checkout_count'] = pd.to_numeric(df_users.get('checkout_count', 0), errors='coerce').fillna(0)
+
+    if new_status == 'Checked Out':
+        df.loc[latest_idx, 'checkout_time'] = curr_time
+        df.loc[latest_idx, 'checkout_user_id'] = user_email
+        df.loc[latest_idx, 'sent_to'] = sent_to
+        if not u_idx.empty:
+            df_users.loc[u_idx, 'checkout_count'] += 1
+    else:
+        df.loc[latest_idx, 'stored_time'] = curr_time
+        df.loc[latest_idx, 'checkin_user_id'] = user_email
+        df.loc[latest_idx, 'checkout_time'] = ""
+        df.loc[latest_idx, 'checkout_user_id'] = ""
+        df.loc[latest_idx, 'sent_to'] = ""
+        if not u_idx.empty:
+            df_users.loc[u_idx, 'checkin_count'] += 1
+            
     df.loc[latest_idx, 'status'] = new_status
     write_sheet_data("aliquots", df)
+    if not u_idx.empty:
+        write_sheet_data("users", df_users)
     
     return True, f"Aliquot toggled successfully. New Status: **{new_status}**", new_status
 
@@ -364,7 +413,14 @@ def get_recent_aliquots(limit=50):
         return pd.DataFrame()
     df['id'] = pd.to_numeric(df['id'])
     df = df.sort_values(by='id', ascending=False).head(limit)
-    return df[['location_id', 'patientvisit_id', 'specimen_type', 'status']]
+    
+    # Calculate days since stored dynamically
+    now = datetime.now()
+    if 'stored_time' in df.columns:
+        df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
+        
+    cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'status', 'sent_to', 'stored_time', 'days_since_stored', 'checkout_time', 'checkin_user_id', 'checkout_user_id'] if c in df.columns]
+    return df[cols]
 
 def get_all_aliquots_df():
     df = get_sheet_data("aliquots")
@@ -373,8 +429,28 @@ def get_all_aliquots_df():
     
     df['id'] = pd.to_numeric(df['id'])
     df = df.sort_values(by='id', ascending=True)
-    res = df[['location_id', 'patientvisit_id', 'specimen_type', 'status']].copy()
-    res.columns = ["Location ID", "Patient-Visit ID", "Specimen Type", "Status"]
+    
+    now = datetime.now()
+    if 'stored_time' in df.columns:
+        df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
+    
+    cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'status', 'sent_to', 'stored_time', 'days_since_stored', 'checkout_time', 'checkin_user_id', 'checkout_user_id'] if c in df.columns]
+    res = df[cols].copy()
+    
+    # rename for display
+    rename_map = {
+        "location_id": "Location ID",
+        "patientvisit_id": "Patient-Visit ID",
+        "specimen_type": "Specimen Type",
+        "status": "Status",
+        "sent_to": "Sent To",
+        "stored_time": "Stored Time",
+        "days_since_stored": "Days Stored",
+        "checkout_time": "Checkout Time",
+        "checkin_user_id": "Check-in User",
+        "checkout_user_id": "Check-out User"
+    }
+    res.rename(columns=rename_map, inplace=True)
     return res
 
 def upload_aliquots_data(df_up):
@@ -388,7 +464,9 @@ def upload_aliquots_data(df_up):
     if df_aliquots.empty:
         df_aliquots = pd.DataFrame(columns=[
             "id", "location_id", "box_id", "x_coord", "y_coord", 
-            "patientvisit_id", "specimen_type", "status"
+            "patientvisit_id", "specimen_type", "status",
+            "sent_to", "stored_time", "days_since_stored",
+            "checkout_time", "checkin_user_id", "checkout_user_id"
         ])
     
     df_boxes = get_sheet_data("boxes")
@@ -440,7 +518,13 @@ def upload_aliquots_data(df_up):
                 "y_coord": y,
                 "patientvisit_id": pv_id,
                 "specimen_type": s_type,
-                "status": status
+                "status": status,
+                "sent_to": "",
+                "stored_time": "",
+                "days_since_stored": 0,
+                "checkout_time": "",
+                "checkin_user_id": "",
+                "checkout_user_id": ""
             }])
             df_aliquots = pd.concat([df_aliquots, new_row], ignore_index=True)
             next_id += 1
