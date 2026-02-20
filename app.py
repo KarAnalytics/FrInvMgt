@@ -123,7 +123,7 @@ def main():
             cookies.save()
         st.rerun()
 
-    nav_options = ["Dashboard", "Store Aliquots", "Scan/Toggle Aliquots"]
+    nav_options = ["Dashboard", "Store Aliquots", "Scan/Toggle Aliquots", "User Guide"]
     if user_role == 'master':
         nav_options.append("Admin Panel")
 
@@ -135,8 +135,19 @@ def main():
         show_store_aliquots()
     elif page == "Scan/Toggle Aliquots":
         show_scan_aliquots()
+    elif page == "User Guide":
+        show_user_guide()
     elif page == "Admin Panel" and user_role == 'master':
         show_admin_panel()
+
+def show_user_guide():
+    st.header("Documentation")
+    try:
+        with open("user_guide.md", "r", encoding="utf-8") as f:
+            content = f.read()
+        st.markdown(content, unsafe_allow_html=True)
+    except Exception as e:
+        st.error("Could not load user guide. Ensure `user_guide.md` exists in the repository.")
 
 def show_admin_panel():
     st.header("Admin Panel")
