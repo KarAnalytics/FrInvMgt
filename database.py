@@ -158,7 +158,23 @@ def get_pending_users():
 
 def get_all_users():
     df = get_sheet_data("users")
-    return df[['email', 'role', 'status']]
+    
+    cols = ['email', 'role', 'status']
+    if 'checkin_count' in df.columns:
+        cols.append('checkin_count')
+    if 'checkout_count' in df.columns:
+        cols.append('checkout_count')
+        
+    res = df[cols].copy()
+    rename_map = {
+        'email': 'Email',
+        'role': 'Role',
+        'status': 'Status',
+        'checkin_count': 'Check-ins',
+        'checkout_count': 'Check-outs'
+    }
+    res.rename(columns=rename_map, inplace=True)
+    return res
 
 # --- Inventory Methods ---
 
@@ -322,6 +338,8 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count, user_email):
     df_users = get_sheet_data("users")
     u_idx = df_users[df_users['email'] == user_email].index
     if not u_idx.empty:
+        if 'checkin_count' not in df_users.columns:
+            df_users['checkin_count'] = 0
         df_users['checkin_count'] = pd.to_numeric(df_users['checkin_count'], errors='coerce').fillna(0)
         df_users.loc[u_idx, 'checkin_count'] += count
         write_sheet_data("users", df_users)
@@ -349,8 +367,12 @@ def toggle_aliquot_status(location_id, user_email, sent_to=""):
     df_users = get_sheet_data("users")
     u_idx = df_users[df_users['email'] == user_email].index
     if not u_idx.empty:
-        df_users['checkin_count'] = pd.to_numeric(df_users.get('checkin_count', 0), errors='coerce').fillna(0)
-        df_users['checkout_count'] = pd.to_numeric(df_users.get('checkout_count', 0), errors='coerce').fillna(0)
+        if 'checkin_count' not in df_users.columns:
+            df_users['checkin_count'] = 0
+        if 'checkout_count' not in df_users.columns:
+            df_users['checkout_count'] = 0
+        df_users['checkin_count'] = pd.to_numeric(df_users['checkin_count'], errors='coerce').fillna(0)
+        df_users['checkout_count'] = pd.to_numeric(df_users['checkout_count'], errors='coerce').fillna(0)
 
     if new_status == 'Checked Out':
         df.loc[latest_idx, 'checkout_time'] = curr_time
