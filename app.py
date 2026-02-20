@@ -287,7 +287,8 @@ def show_dashboard(user_role):
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
         else:
-            st.dataframe(database.get_recent_aliquots(20), use_container_width=True)
+            user_email = st.session_state["user"]["email"]
+            st.dataframe(database.get_recent_aliquots(user_email, 20), use_container_width=True)
 
 def show_store_aliquots():
     st.header("Store New Aliquots")

@@ -4,6 +4,8 @@ import pandas as pd
 import re
 from datetime import datetime
 
+ADMIN_USER = "kartucson@gmail.com"
+
 # IMPORTANT: You must setup your .streamlit/secrets.toml with your Google Service Account
 # and provide `spreadsheet` URL inside the `[connections.gsheets]` block.
 
@@ -42,7 +44,7 @@ def init_db():
     if df_users.empty or 'email' not in df_users.columns:
         # Create base dataframe
         df_users = pd.DataFrame({
-            "email": ["kartucson@gmail.com"],
+            "email": [ADMIN_USER],
             "password": ["master123"],
             "role": ["master"],
             "status": ["approved"],
@@ -78,9 +80,8 @@ def init_db():
     if df_aliquots.empty or 'id' not in df_aliquots.columns:
         df_aliquots = pd.DataFrame(columns=[
             "id", "location_id", "box_id", "x_coord", "y_coord", 
-            "patientvisit_id", "specimen_type", "status",
-            "sent_to", "stored_time", "days_since_stored",
-            "checkout_time", "checkin_user_id", "checkout_user_id"
+            "patientvisit_id", "specimen_type", "stored_time", "checkin_user_id",
+            "days_since_stored", "status", "sent_to", "checkout_time", "checkout_user_id"
         ])
         write_sheet_data("aliquots", df_aliquots)
 
@@ -144,7 +145,7 @@ def change_password(email, new_password):
         write_sheet_data("users", df)
 
 def remove_user(email):
-    if email == 'kartucson@gmail.com':
+    if email == ADMIN_USER:
         return False, "Cannot delete master user."
     df = get_sheet_data("users")
     df = df[df['email'] != email]
@@ -308,12 +309,12 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count, user_email):
             "y_coord": y,
             "patientvisit_id": patientvisit_id,
             "specimen_type": aliquot_type,
+            "stored_time": curr_time,
+            "checkin_user_id": user_email,
+            "days_since_stored": 0,
             "status": "Stored",
             "sent_to": "",
-            "stored_time": curr_time,
-            "days_since_stored": 0,
             "checkout_time": "",
-            "checkin_user_id": user_email,
             "checkout_user_id": ""
         })
         allocated.append({
@@ -429,10 +430,17 @@ def get_freezer_stats():
         'type_counts_stored': type_counts
     }
 
-def get_recent_aliquots(limit=50):
+def get_recent_aliquots(user_email, limit=50):
     df = get_sheet_data("aliquots")
     if df.empty:
         return pd.DataFrame()
+    
+    if user_email != ADMIN_USER:
+        # Filter to only show activity for this user
+        df = df[(df['checkin_user_id'] == user_email) | (df['checkout_user_id'] == user_email)]
+        if df.empty:
+            return pd.DataFrame()
+            
     df['id'] = pd.to_numeric(df['id'])
     df = df.sort_values(by='id', ascending=False).head(limit)
     
@@ -441,7 +449,7 @@ def get_recent_aliquots(limit=50):
     if 'stored_time' in df.columns:
         df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
         
-    cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'status', 'sent_to', 'stored_time', 'days_since_stored', 'checkout_time', 'checkin_user_id', 'checkout_user_id'] if c in df.columns]
+    cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'stored_time', 'checkin_user_id', 'days_since_stored','status',  'sent_to', 'checkout_time', 'checkout_user_id'] if c in df.columns]
     return df[cols]
 
 def get_all_aliquots_df():
@@ -456,7 +464,7 @@ def get_all_aliquots_df():
     if 'stored_time' in df.columns:
         df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
     
-    cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'status', 'sent_to', 'stored_time', 'days_since_stored', 'checkout_time', 'checkin_user_id', 'checkout_user_id'] if c in df.columns]
+    cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'stored_time', 'checkin_user_id',  'days_since_stored', 'status', 'sent_to', 'checkout_time', 'checkout_user_id'] if c in df.columns]
     res = df[cols].copy()
     
     # rename for display
@@ -486,9 +494,8 @@ def upload_aliquots_data(df_up):
     if df_aliquots.empty:
         df_aliquots = pd.DataFrame(columns=[
             "id", "location_id", "box_id", "x_coord", "y_coord", 
-            "patientvisit_id", "specimen_type", "status",
-            "sent_to", "stored_time", "days_since_stored",
-            "checkout_time", "checkin_user_id", "checkout_user_id"
+            "patientvisit_id", "specimen_type", "stored_time", "checkin_user_id",
+            "days_since_stored", "status", "sent_to", "checkout_time", "checkout_user_id"
         ])
     
     df_boxes = get_sheet_data("boxes")
@@ -540,12 +547,12 @@ def upload_aliquots_data(df_up):
                 "y_coord": y,
                 "patientvisit_id": pv_id,
                 "specimen_type": s_type,
+                "stored_time": "",
+                "checkin_user_id": "",
+                "days_since_stored": 0,
                 "status": status,
                 "sent_to": "",
-                "stored_time": "",
-                "days_since_stored": 0,
                 "checkout_time": "",
-                "checkin_user_id": "",
                 "checkout_user_id": ""
             }])
             df_aliquots = pd.concat([df_aliquots, new_row], ignore_index=True)
