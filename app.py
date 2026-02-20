@@ -260,6 +260,8 @@ def show_dashboard(user_role):
         st.info("No aliquots found in the database.")
     else:
         if user_role == 'master':
+            if not full_df.empty:
+                full_df.index = [""] * len(full_df)
             st.dataframe(full_df, use_container_width=True)
             
             csv = full_df.to_csv(index=False).encode('utf-8')
@@ -294,11 +296,9 @@ def show_dashboard(user_role):
             # get_recent_aliquots returns a dataframe. 
             recent_df = database.get_recent_aliquots(user_email, 20)
             if not recent_df.empty:
-                recent_df = recent_df.reset_index(drop=True)
-            # st.dataframe's native toolbar allows downloading. We can disable it via column_config or by just using st.table if we want it static.
-            # actually st.dataframe doesn't have a direct "disable download" flag for the toolbar yet in many versions,
-            # but using st.table removes all interactivity including downloading.
-            st.table(recent_df)
+                # Remove index visibility manually for older Streamlit versions
+                recent_df.index = [""] * len(recent_df)
+            st.dataframe(recent_df, use_container_width=True)
 
 def show_store_aliquots():
     st.header("Store New Aliquots")
