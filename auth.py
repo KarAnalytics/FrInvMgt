@@ -5,7 +5,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 from dotenv import load_dotenv
-
+import streamlit as st
 load_dotenv()
 
 # These should be set in a .env file locally for security.
@@ -59,3 +59,4 @@ def simulate_email(to_email, subject, body):
     If credentials aren't set, `send_real_email` handles the fallback logic gracefully.
     """
     return send_real_email(to_email, subject, body)
+
