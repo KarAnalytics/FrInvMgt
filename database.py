@@ -9,11 +9,13 @@ import re
 def get_connection():
     return st.connection("gsheets", type=GSheetsConnection)
 
+@st.cache_data(ttl=600, show_spinner=False)
 def get_sheet_data(sheet_name):
     conn = get_connection()
     try:
-        # Cache for 10 minutes to avoid Google Sheets Rate Limit Error (429)
-        df = conn.read(worksheet=sheet_name, ttl=600) 
+        # ttl=0 forces the GSheetsConnection to bypass its own cache, 
+        # so that our explicit @st.cache_data decorator manages it completely.
+        df = conn.read(worksheet=sheet_name, ttl=0) 
         return pd.DataFrame(df)
     except Exception as e:
         return pd.DataFrame()
@@ -22,8 +24,8 @@ def write_sheet_data(sheet_name, df):
     conn = get_connection()
     # Write the dataframe back, completely replacing the current sheet data
     conn.update(worksheet=sheet_name, data=df)
-    # Clear the cache immediately so the next read sees the new data instantly
-    st.cache_data.clear()
+    # Clear ONLY the cache for this specific sheet, saving API calls on the other sheets
+    get_sheet_data.clear(sheet_name)
 
 def init_db():
     # Because Google Sheets must be created manually and shared with the Service Account,

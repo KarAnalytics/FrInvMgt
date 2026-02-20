@@ -12,9 +12,17 @@ load_dotenv()
 EMAIL_SENDER = os.getenv("EMAIL_SENDER", "kartucson@gmail.com")
 # Gmail requires an "App Password" (16 chars) if 2-Step Verification is on.
 # Do NOT use your regular Gmail password here.
-EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD", "")
-if not EMAIL_APP_PASSWORD and hasattr(st, "secrets") and "EMAIL_APP_PASSWORD" in st.secrets:
-    EMAIL_APP_PASSWORD = st.secrets["EMAIL_APP_PASSWORD"]
+def get_app_password():
+    # Force dotenv to override any empty system variables
+    load_dotenv(override=True)
+    pwd = os.getenv("EMAIL_APP_PASSWORD", "")
+    if not pwd and hasattr(st, "secrets"):
+        try:
+            if "EMAIL_APP_PASSWORD" in st.secrets:
+                pwd = st.secrets["EMAIL_APP_PASSWORD"]
+        except:
+            pass
+    return pwd
 
 def generate_password(length=8):
     """Generate a random alphanumeric password."""
@@ -26,8 +34,9 @@ def send_real_email(to_email, subject, body):
     Sends a real email using Gmail's SMTP server.
     Requires EMAIL_SENDER and EMAIL_APP_PASSWORD to be configured.
     """
-    if not EMAIL_APP_PASSWORD:
-        return (False, "Email system offline: App Password not configured in .env file. "
+    app_pwd = get_app_password()
+    if not app_pwd:
+        return (False, "Email system offline: App Password not configured in .env file or Streamlit Secrets. "
                        f"Simulated message intended for {to_email}: {body}")
         
     try:
@@ -41,7 +50,7 @@ def send_real_email(to_email, subject, body):
         # Connect to Gmail's SMTP server
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls() # Secure the connection
-        server.login(EMAIL_SENDER, EMAIL_APP_PASSWORD)
+        server.login(EMAIL_SENDER, app_pwd)
         
         # Send email
         text = msg.as_string()
@@ -59,4 +68,3 @@ def simulate_email(to_email, subject, body):
     If credentials aren't set, `send_real_email` handles the fallback logic gracefully.
     """
     return send_real_email(to_email, subject, body)
-
