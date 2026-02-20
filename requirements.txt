@@ -2,3 +2,9 @@ streamlit
 pandas
 qrcode[pil]
 Pillow
+streamlit-cookies-manager
+fpdf2
+st-gsheets-connection
+gspread
+python-dotenv
+pyarrow
