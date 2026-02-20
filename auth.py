@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # These should be set in a .env file locally for security.
-EMAIL_SENDER = os.getenv("EMAIL_SENDER", "kartucson@gmail.com")
+EMAIL_SENDER = os.getenv("EMAIL_SENDER", "FrInventoryMgmt@gmail.com")
 # Gmail requires an "App Password" (16 chars) if 2-Step Verification is on.
 # Do NOT use your regular Gmail password here.
 EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD", "")
