@@ -3,8 +3,14 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import re
 from datetime import datetime
+import pytz
 
-ADMIN_USER = "kartucson@gmail.com"
+CST_TZ = pytz.timezone("America/Chicago")
+
+def get_current_cst_time():
+    return datetime.now(CST_TZ).replace(tzinfo=None)
+
+ADMIN_USER = st.secrets.get("ADMIN_USER", "admin@example.com")
 
 # IMPORTANT: You must setup your .streamlit/secrets.toml with your Google Service Account
 # and provide `spreadsheet` URL inside the `[connections.gsheets]` block.
@@ -298,7 +304,7 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count, user_email):
         
     new_rows = []
     allocated = []
-    curr_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    curr_time = get_current_cst_time().strftime("%Y-%m-%d %H:%M:%S")
     for (x, y) in spots_to_use:
         location_id = f"D{d}R{r}L{l}B{b}X{x}Y{y}"
         new_rows.append({
@@ -363,7 +369,7 @@ def toggle_aliquot_status(location_id, user_email, sent_to=""):
     curr_status = df.loc[latest_idx, 'status']
     new_status = 'Checked Out' if curr_status == 'Stored' else 'Stored'
     
-    curr_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    curr_time = get_current_cst_time().strftime("%Y-%m-%d %H:%M:%S")
     
     df_users = get_sheet_data("users")
     u_idx = df_users[df_users['email'] == user_email].index
@@ -451,7 +457,7 @@ def get_recent_aliquots(user_email, limit=50):
         df = df.sort_values(by='id', ascending=False).head(limit)
     
     # Calculate days since stored dynamically
-    now = datetime.now()
+    now = get_current_cst_time()
     if 'stored_time' in df.columns:
         df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
         
@@ -488,7 +494,7 @@ def get_all_aliquots_df():
         df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0)
         df = df.sort_values(by='id', ascending=False)
     
-    now = datetime.now()
+    now = get_current_cst_time()
     if 'stored_time' in df.columns:
         df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
     

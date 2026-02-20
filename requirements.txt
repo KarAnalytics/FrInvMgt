@@ -11,3 +11,4 @@ pyarrow
 pyzbar
 opencv-python-headless
 numpy
+pytz
