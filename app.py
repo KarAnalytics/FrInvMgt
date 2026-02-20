@@ -8,6 +8,9 @@ import auth
 from streamlit_cookies_manager import EncryptedCookieManager
 import io
 import label_generator
+import cv2
+import numpy as np
+from pyzbar.pyzbar import decode
 
 st.set_page_config(page_title="Freezer Inventory Management", layout="wide")
 
@@ -359,13 +362,34 @@ def show_store_aliquots():
 
 def show_scan_aliquots():
     st.header("Scan/Toggle Aliquots")
-    st.markdown("Use a QR Scanner or manually type the Aliquot Location ID below to check it out or check it back in.")
+    st.markdown("Use a QR Scanner, manually type the Aliquot Location ID below, or use the camera to scan a QR code.")
     st.markdown("Scanning an item that is `Stored` will mark it as `Checked Out`. Scanning it again will check it back into storage.")
     
+    # Camera Input for QR Scanning
+    camera_image = st.camera_input("📷 Scan QR Code with Camera")
+    scanned_loc_id = ""
+    
+    if camera_image is not None:
+        try:
+            # Convert the uploaded image to an OpenCV image
+            file_bytes = np.asarray(bytearray(camera_image.read()), dtype=np.uint8)
+            opencv_image = cv2.imdecode(file_bytes, 1)
+            
+            # Decode the QR code
+            decoded_objects = decode(opencv_image)
+            if decoded_objects:
+                scanned_loc_id = decoded_objects[0].data.decode("utf-8")
+                st.success(f"Successfully scanned QR Code: **{scanned_loc_id}**")
+            else:
+                st.warning("No QR code detected in the image. Please try again or ensure the QR code is clearly visible.")
+        except Exception as e:
+            st.error(f"Error processing image for QR code: {e}")
+
     with st.form("scan_form", clear_on_submit=True):
-        loc_id = st.text_input("Aliquot Location ID (e.g. D1R1L1B1X1Y1)")
+        # Pre-fill with scanned ID if available
+        loc_id = st.text_input("Aliquot Location ID (e.g. D1R1L1B1X1Y1)", value=scanned_loc_id)
         sent_to = st.text_input("Destination (optional, if checking out)")
-        submitted = st.form_submit_button("Submit / Scan")
+        submitted = st.form_submit_button("Submit / Checkout")
         
         if submitted:
             if loc_id:
@@ -376,7 +400,7 @@ def show_scan_aliquots():
                 else:
                     st.error(msg)
             else:
-                st.error("Please enter an ID.")
+                st.error("Please enter or scan an ID.")
 
 if __name__ == "__main__":
     main()
