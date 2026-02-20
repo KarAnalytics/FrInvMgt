@@ -441,8 +441,14 @@ def get_recent_aliquots(user_email, limit=50):
         if df.empty:
             return pd.DataFrame()
             
-    df['id'] = pd.to_numeric(df['id'])
-    df = df.sort_values(by='id', ascending=False).head(limit)
+    cols_to_check = [c for c in ['stored_time', 'checkout_time'] if c in df.columns]
+    if cols_to_check:
+        temp_df = df[cols_to_check].apply(pd.to_datetime, errors='coerce')
+        df['latest_activity'] = temp_df.max(axis=1)
+        df = df.sort_values(by=['latest_activity', 'id'], ascending=[False, False]).head(limit)
+    else:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0)
+        df = df.sort_values(by='id', ascending=False).head(limit)
     
     # Calculate days since stored dynamically
     now = datetime.now()
@@ -450,15 +456,37 @@ def get_recent_aliquots(user_email, limit=50):
         df['days_since_stored'] = pd.to_datetime(df['stored_time'], errors='coerce').apply(lambda x: (now - x).days if pd.notnull(x) else 0)
         
     cols = [c for c in ['location_id', 'patientvisit_id', 'specimen_type', 'stored_time', 'checkin_user_id', 'days_since_stored','status',  'sent_to', 'checkout_time', 'checkout_user_id'] if c in df.columns]
-    return df[cols]
+    res = df[cols].copy()
+    
+    # rename for display
+    rename_map = {
+        "location_id": "Location ID",
+        "patientvisit_id": "Patient-Visit ID",
+        "specimen_type": "Specimen Type",
+        "status": "Status",
+        "sent_to": "Sent To",
+        "stored_time": "Stored Time",
+        "days_since_stored": "Days Stored",
+        "checkout_time": "Checkout Time",
+        "checkin_user_id": "Check-in User",
+        "checkout_user_id": "Check-out User"
+    }
+    res.rename(columns=rename_map, inplace=True)
+    return res
 
 def get_all_aliquots_df():
     df = get_sheet_data("aliquots")
     if df.empty:
         return pd.DataFrame()
     
-    df['id'] = pd.to_numeric(df['id'])
-    df = df.sort_values(by='id', ascending=True)
+    cols_to_check = [c for c in ['stored_time', 'checkout_time'] if c in df.columns]
+    if cols_to_check:
+        temp_df = df[cols_to_check].apply(pd.to_datetime, errors='coerce')
+        df['latest_activity'] = temp_df.max(axis=1)
+        df = df.sort_values(by=['latest_activity', 'id'], ascending=[False, False])
+    else:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0)
+        df = df.sort_values(by='id', ascending=False)
     
     now = datetime.now()
     if 'stored_time' in df.columns:
