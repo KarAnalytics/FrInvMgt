@@ -9,7 +9,7 @@ import re
 def get_connection():
     return st.connection("gsheets", type=GSheetsConnection)
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def get_sheet_data(sheet_name):
     conn = get_connection()
     try:
@@ -202,23 +202,45 @@ def allocate_aliquots(patientvisit_id, aliquot_type, count):
                 if pvid != patientvisit_id and extract_patient_id(pvid) == pat_id:
                     forbidden_boxes.add(row['box_id'])
                     
-        # Find suitable box
-        for _, row in df_boxes.iterrows():
-            b_id = row['id']
-            if b_id in forbidden_boxes:
-                continue
-                
-            s_type = str(row['specimen_type']).strip()
-            # If empty string, treat as NaN/None
-            if s_type == "" or s_type == "nan" or s_type == "None":
-                s_type = None
-                
-            used = row['spots_used']
+        preferred_rack = None
+        if aliquot_type == "Plasma":
+            preferred_rack = 1
+        elif aliquot_type == "Serum":
+            preferred_rack = 2
+        elif aliquot_type == "Urine":
+            preferred_rack = 3
             
-            if (s_type is None or s_type == aliquot_type) and (81 - used) >= count:
-                target_box_id = b_id
-                spots_used_in_target = used
-                break
+        def find_box(iterator):
+            for _, row in iterator:
+                b_id = row['id']
+                if b_id in forbidden_boxes:
+                    continue
+                    
+                s_type = str(row['specimen_type']).strip()
+                if s_type == "" or s_type == "nan" or s_type == "None":
+                    s_type = None
+                    
+                used = row['spots_used']
+                
+                if (s_type is None or s_type == aliquot_type) and (81 - used) >= count:
+                    return b_id, used
+            return None, 0
+            
+        # Pass 1: Try preferred rack exclusively
+        if preferred_rack is not None:
+            target_box_id, spots_used_in_target = find_box(
+                df_boxes[(df_boxes['rack_num'] == preferred_rack) | (df_boxes['rack_num'] == str(preferred_rack))].iterrows()
+            )
+            
+        # Pass 2: Fallback to Overflow Rack 4
+        if target_box_id is None:
+            target_box_id, spots_used_in_target = find_box(
+                df_boxes[(df_boxes['rack_num'] == 4) | (df_boxes['rack_num'] == '4')].iterrows()
+            )
+            
+        # Pass 3: Emergency Fallback to any rack anywhere in the freezer
+        if target_box_id is None:
+            target_box_id, spots_used_in_target = find_box(df_boxes.iterrows())
                 
     if target_box_id is None:
         raise Exception(f"No suitable box found for allocation of {count} {aliquot_type} aliquots!")
