@@ -326,14 +326,16 @@ def show_store_aliquots():
             return
             
         try:
-            allocations = []
             user_email = st.session_state["user"]["email"]
+            requests = []
             if num_plasma > 0:
-                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Plasma", num_plasma, user_email))
+                requests.append(("Plasma", num_plasma))
             if num_serum > 0:
-                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Serum", num_serum, user_email))
+                requests.append(("Serum", num_serum))
             if num_urine > 0:
-                allocations.extend(database.allocate_aliquots(patientvisit_id.strip(), "Urine", num_urine, user_email))
+                requests.append(("Urine", num_urine))
+                
+            allocations = database.allocate_multiple_aliquots(patientvisit_id.strip(), requests, user_email)
                 
             st.success(f"Successfully allocated {len(allocations)} aliquots!")
             

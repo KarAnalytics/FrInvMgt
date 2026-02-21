@@ -194,164 +194,177 @@ def extract_patient_id(pv_id):
         return m.group(1)
     return pv_id
 
-def allocate_aliquots(patientvisit_id, aliquot_type, count, user_email):
-    if count <= 0:
-        return []
-
+def allocate_multiple_aliquots(patientvisit_id, requests, user_email):
+    """
+    requests should be a list of tuples: [(aliquot_type_1, count_1), (aliquot_type_2, count_2), ...]
+    """
     df_boxes = get_sheet_data("boxes")
-    # Convert types just in case Google Sheets read them as strings
     df_boxes['id'] = pd.to_numeric(df_boxes['id'])
     df_boxes['spots_used'] = pd.to_numeric(df_boxes['spots_used'])
     
     df_aliquots = get_sheet_data("aliquots")
     if not df_aliquots.empty:
         df_aliquots['box_id'] = pd.to_numeric(df_aliquots['box_id'])
-    
-    # 1. Find a box (Constraint 3)
-    target_box_id = None
-    spots_used_in_target = 0
-    
-    if not df_aliquots.empty:
-        # Check if already using a box for this specific PV and type
-        matching = df_aliquots[(df_aliquots['patientvisit_id'] == patientvisit_id) & (df_aliquots['specimen_type'] == aliquot_type)]
-        if not matching.empty:
-            possible_box = matching.iloc[0]['box_id']
-            b_row = df_boxes[df_boxes['id'] == possible_box]
-            if not b_row.empty:
-                used = b_row.iloc[0]['spots_used']
-                if (81 - used) >= count:
-                    target_box_id = possible_box
-                    spots_used_in_target = used
-
-    # Constraints 1 and 2
-    if target_box_id is None:
-        pat_id = extract_patient_id(patientvisit_id)
         
-        forbidden_boxes = set()
-        if not df_aliquots.empty:
-            for _, row in df_aliquots.iterrows():
-                pvid = row['patientvisit_id']
-                if pvid != patientvisit_id and extract_patient_id(pvid) == pat_id:
-                    forbidden_boxes.add(row['box_id'])
-                    
-        preferred_rack = None
-        if aliquot_type == "Plasma":
-            preferred_rack = 1
-        elif aliquot_type == "Serum":
-            preferred_rack = 2
-        elif aliquot_type == "Urine":
-            preferred_rack = 3
-            
-        def find_box(iterator):
-            for _, row in iterator:
-                b_id = row['id']
-                if b_id in forbidden_boxes:
-                    continue
-                    
-                s_type = str(row['specimen_type']).strip()
-                if s_type == "" or s_type == "nan" or s_type == "None":
-                    s_type = None
-                    
-                used = row['spots_used']
-                
-                if (s_type is None or s_type == aliquot_type) and (81 - used) >= count:
-                    return b_id, used
-            return None, 0
-            
-        # Pass 1: Try preferred rack exclusively
-        if preferred_rack is not None:
-            target_box_id, spots_used_in_target = find_box(
-                df_boxes[(df_boxes['rack_num'] == preferred_rack) | (df_boxes['rack_num'] == str(preferred_rack))].iterrows()
-            )
-            
-        # Pass 2: Fallback to Overflow Rack 4
-        if target_box_id is None:
-            target_box_id, spots_used_in_target = find_box(
-                df_boxes[(df_boxes['rack_num'] == 4) | (df_boxes['rack_num'] == '4')].iterrows()
-            )
-            
-        # Pass 3: Emergency Fallback to any rack anywhere in the freezer
-        if target_box_id is None:
-            target_box_id, spots_used_in_target = find_box(df_boxes.iterrows())
-                
-    if target_box_id is None:
-        raise Exception(f"No suitable box found for allocation of {count} {aliquot_type} aliquots!")
-        
-    # 2. Find empty spots
-    used_spots = set()
-    if not df_aliquots.empty:
-        box_aliq = df_aliquots[df_aliquots['box_id'] == target_box_id]
-        for _, row in box_aliq.iterrows():
-            used_spots.add((int(row['x_coord']), int(row['y_coord'])))
-            
-    empty_spots = []
-    for x in range(1, 10):
-        for y in range(1, 10):
-            if (x, y) not in used_spots:
-                empty_spots.append((x, y))
-                
-    spots_to_use = empty_spots[:count]
-    
-    # 3. Make IDs
-    box_row = df_boxes[df_boxes['id'] == target_box_id].iloc[0]
-    d, r, l, b = box_row['door_num'], box_row['rack_num'], box_row['level_num'], box_row['box_num']
-    
-    # Generate new aliquot ID index
-    next_id = 1
-    if not df_aliquots.empty:
-        df_aliquots['id'] = pd.to_numeric(df_aliquots['id'])
-        next_id = int(df_aliquots['id'].max()) + 1
-        
-    new_rows = []
-    allocated = []
-    curr_time = get_current_cst_time().strftime("%Y-%m-%d %H:%M:%S")
-    for (x, y) in spots_to_use:
-        location_id = f"D{d}R{r}L{l}B{b}X{x}Y{y}"
-        new_rows.append({
-            "id": next_id,
-            "location_id": location_id,
-            "box_id": target_box_id,
-            "x_coord": x,
-            "y_coord": y,
-            "patientvisit_id": patientvisit_id,
-            "specimen_type": aliquot_type,
-            "stored_time": curr_time,
-            "checkin_user_id": user_email,
-            "days_since_stored": 0,
-            "status": "Stored",
-            "sent_to": "",
-            "checkout_time": "",
-            "checkout_user_id": ""
-        })
-        allocated.append({
-            'location_id': location_id,
-            'x': x,
-            'y': y,
-            'patientvisit_id': patientvisit_id,
-            'specimen_type': aliquot_type
-        })
-        next_id += 1
-        
-    df_aliquots = pd.concat([df_aliquots, pd.DataFrame(new_rows)], ignore_index=True)
-    write_sheet_data("aliquots", df_aliquots)
-    
-    # 4. Update box metadata
-    idx = df_boxes[df_boxes['id'] == target_box_id].index
-    df_boxes.loc[idx, 'spots_used'] = spots_used_in_target + count
-    df_boxes.loc[idx, 'specimen_type'] = aliquot_type
-    write_sheet_data("boxes", df_boxes)
-    
-    # 5. Update user checkin count
     df_users = get_sheet_data("users")
     u_idx = df_users[df_users['email'] == user_email].index
     if not u_idx.empty:
         if 'checkin_count' not in df_users.columns:
             df_users['checkin_count'] = 0
         df_users['checkin_count'] = pd.to_numeric(df_users['checkin_count'], errors='coerce').fillna(0)
-        df_users.loc[u_idx, 'checkin_count'] += count
-        write_sheet_data("users", df_users)
     
-    return allocated
+    all_allocated = []
+    total_count = 0
+    
+    next_id = 1
+    if not df_aliquots.empty:
+        df_aliquots['id'] = pd.to_numeric(df_aliquots['id'])
+        next_id = int(df_aliquots['id'].max()) + 1
+
+    curr_time = get_current_cst_time().strftime("%Y-%m-%d %H:%M:%S")
+
+    for aliquot_type, count in requests:
+        if count <= 0:
+            continue
+            
+        total_count += count
+        
+        # 1. Find a box (Constraint 3)
+        target_box_id = None
+        spots_used_in_target = 0
+        
+        if not df_aliquots.empty:
+            # Check if already using a box for this specific PV and type
+            matching = df_aliquots[(df_aliquots['patientvisit_id'] == patientvisit_id) & (df_aliquots['specimen_type'] == aliquot_type)]
+            if not matching.empty:
+                possible_box = matching.iloc[0]['box_id']
+                b_row = df_boxes[df_boxes['id'] == possible_box]
+                if not b_row.empty:
+                    used = b_row.iloc[0]['spots_used']
+                    if (81 - used) >= count:
+                        target_box_id = possible_box
+                        spots_used_in_target = used
+
+        # Constraints 1 and 2
+        if target_box_id is None:
+            pat_id = extract_patient_id(patientvisit_id)
+            
+            forbidden_boxes = set()
+            if not df_aliquots.empty:
+                for _, row in df_aliquots.iterrows():
+                    pvid = row['patientvisit_id']
+                    if pvid != patientvisit_id and extract_patient_id(pvid) == pat_id:
+                        forbidden_boxes.add(row['box_id'])
+                        
+            preferred_rack = None
+            if aliquot_type == "Plasma":
+                preferred_rack = 1
+            elif aliquot_type == "Serum":
+                preferred_rack = 2
+            elif aliquot_type == "Urine":
+                preferred_rack = 3
+                
+            def find_box(iterator):
+                for _, row in iterator:
+                    b_id = row['id']
+                    if b_id in forbidden_boxes:
+                        continue
+                        
+                    s_type = str(row['specimen_type']).strip()
+                    if s_type == "" or s_type == "nan" or s_type == "None":
+                        s_type = None
+                        
+                    used = row['spots_used']
+                    
+                    if (s_type is None or s_type == aliquot_type) and (81 - used) >= count:
+                        return b_id, used
+                return None, 0
+                
+            # Pass 1: Try preferred rack exclusively
+            if preferred_rack is not None:
+                target_box_id, spots_used_in_target = find_box(
+                    df_boxes[(df_boxes['rack_num'] == preferred_rack) | (df_boxes['rack_num'] == str(preferred_rack))].iterrows()
+                )
+                
+            # Pass 2: Fallback to Overflow Rack 4
+            if target_box_id is None:
+                target_box_id, spots_used_in_target = find_box(
+                    df_boxes[(df_boxes['rack_num'] == 4) | (df_boxes['rack_num'] == '4')].iterrows()
+                )
+                
+            # Pass 3: Emergency Fallback to any rack anywhere in the freezer
+            if target_box_id is None:
+                target_box_id, spots_used_in_target = find_box(df_boxes.iterrows())
+                    
+        if target_box_id is None:
+            raise Exception(f"No suitable box found for allocation of {count} {aliquot_type} aliquots!")
+            
+        # 2. Find empty spots
+        used_spots = set()
+        if not df_aliquots.empty:
+            box_aliq = df_aliquots[df_aliquots['box_id'] == target_box_id]
+            for _, row in box_aliq.iterrows():
+                used_spots.add((int(row['x_coord']), int(row['y_coord'])))
+                
+        empty_spots = []
+        for x in range(1, 10):
+            for y in range(1, 10):
+                if (x, y) not in used_spots:
+                    empty_spots.append((x, y))
+                    
+        spots_to_use = empty_spots[:count]
+        
+        # 3. Make IDs
+        box_row = df_boxes[df_boxes['id'] == target_box_id].iloc[0]
+        d, r, l, b = box_row['door_num'], box_row['rack_num'], box_row['level_num'], box_row['box_num']
+            
+        new_rows = []
+        for (x, y) in spots_to_use:
+            location_id = f"D{d}R{r}L{l}B{b}X{x}Y{y}"
+            new_rows.append({
+                "id": next_id,
+                "location_id": location_id,
+                "box_id": target_box_id,
+                "x_coord": x,
+                "y_coord": y,
+                "patientvisit_id": patientvisit_id,
+                "specimen_type": aliquot_type,
+                "stored_time": curr_time,
+                "checkin_user_id": user_email,
+                "days_since_stored": 0,
+                "status": "Stored",
+                "sent_to": "",
+                "checkout_time": "",
+                "checkout_user_id": ""
+            })
+            all_allocated.append({
+                'location_id': location_id,
+                'x': x,
+                'y': y,
+                'patientvisit_id': patientvisit_id,
+                'specimen_type': aliquot_type
+            })
+            next_id += 1
+            
+        if not df_aliquots.empty:
+            df_aliquots = pd.concat([df_aliquots, pd.DataFrame(new_rows)], ignore_index=True)
+        else:
+            df_aliquots = pd.DataFrame(new_rows)
+            
+        # 4. Update box metadata
+        idx = df_boxes[df_boxes['id'] == target_box_id].index
+        df_boxes.loc[idx, 'spots_used'] = spots_used_in_target + count
+        df_boxes.loc[idx, 'specimen_type'] = aliquot_type
+        
+    # 5. Write back to Google Sheets exactly ONCE per session
+    if total_count > 0:
+        write_sheet_data("aliquots", df_aliquots)
+        write_sheet_data("boxes", df_boxes)
+        if not u_idx.empty:
+            df_users.loc[u_idx, 'checkin_count'] += total_count
+            write_sheet_data("users", df_users)
+            
+    return all_allocated
 
 def toggle_aliquot_status(location_id, user_email, sent_to=""):
     df = get_sheet_data("aliquots")
