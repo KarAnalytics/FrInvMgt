@@ -372,14 +372,17 @@ def show_scan_aliquots():
     st.markdown("Use a QR Scanner, manually type the Aliquot Location ID below, or use the camera to scan a QR code.")
     st.markdown("Scanning an item that is `Stored` will mark it as `Checked Out`. Scanning it again will check it back into storage.")
     
-    # Camera Input for QR Scanning
-    camera_image = st.camera_input("📷 Scan QR Code with Camera")
-    scanned_loc_id = ""
+    # Camera/Image Input for QR Scanning
+    camera_image = st.camera_input("📷 Scan QR Code with Live Camera")
+    uploaded_image = st.file_uploader("📁 Or upload/take a photo of a QR Code (Better for mobile)", type=['png', 'jpg', 'jpeg'])
     
-    if camera_image is not None:
+    scanned_loc_id = ""
+    image_to_process = camera_image if camera_image else uploaded_image
+    
+    if image_to_process is not None:
         try:
             # Convert the uploaded image to an OpenCV image
-            file_bytes = np.asarray(bytearray(camera_image.read()), dtype=np.uint8)
+            file_bytes = np.asarray(bytearray(image_to_process.read()), dtype=np.uint8)
             opencv_image = cv2.imdecode(file_bytes, 1)
             
             # Decode the QR code

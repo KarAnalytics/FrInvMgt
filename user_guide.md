@@ -1,6 +1,8 @@
 # Freezer Inventory Management User Guide
 
-Welcome to the Freezer Inventory Management System! This application helps you accurately store, track, and retrieve Plasma, Serum, and Urine aliquots across a 500-box freezer system.
+Welcome to the Freezer Inventory Management System! This application helps you accurately store, track, and retrieve Plasma, Serum, and Urine aliquots across a massive 500-box freezer system.
+
+**Access the Live Application Here:** [https://frinvmgt.streamlit.app/](https://frinvmgt.streamlit.app/)
 
 ## 1. Getting Started
 - **Login:** Access the web application and sign in with your approved credentials. 
@@ -38,6 +40,3 @@ When you physically remove an aliquot from the freezer, it must be electronicall
 4. The scanner will automatically input the Location ID (e.g. `D1R1L1B1X1Y1`) and hit enter.
 5. The system instantly toggles the item from `Stored` to `Checked Out`! 
    *(Note: Scanning it a second time toggles it back into storage).*
-
-
-
