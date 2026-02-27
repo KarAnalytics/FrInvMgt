@@ -6,18 +6,26 @@ import os
 
 def generate_pdf_labels(allocations):
     """
-    Generates a PDF where each page is a 4x1 inch label.
+    Generates a PDF where each page is a 1.69x0.75 inch label.
     allocations: list of dicts with 'location_id', 'patientvisit_id', 'specimen_type'
     Returns: byte stream of the PDF file.
     """
-    # 4 inches x 1 inch in millimeters: ~101.6 mm x 25.4 mm
-    pdf = FPDF(orientation='L', unit='mm', format=(25.4, 101.6))
+    # 1.69 inches by 0.75 inches in millimeters: ~42.93 mm x 19.05 mm
+    pdf = FPDF(orientation='L', unit='mm', format=(19.05, 42.93))
     pdf.set_auto_page_break(False)
+    
+    # Keep track of specimen numbering per patient-visit
+    visit_specimen_counts = {}
     
     for alloc in allocations:
         loc_id = alloc['location_id']
         pv_id = alloc['patientvisit_id']
         sp_type = alloc['specimen_type']
+        
+        # Increment counter for this patient-visit + specimen type
+        key = f"{pv_id}_{sp_type}"
+        visit_specimen_counts[key] = visit_specimen_counts.get(key, 0) + 1
+        sp_number = visit_specimen_counts[key]
         
         pdf.add_page()
         
@@ -37,23 +45,26 @@ def generate_pdf_labels(allocations):
         img.save(temp_img_path)
         
         # Draw QR Code on the left side
-        # image(name, x, y, w, h)
-        # We make it 20x20 mm, vertically centered 
-        pdf.image(temp_img_path, x=2, y=2.7, w=20, h=20)
+        # Make the QR code 17x17 mm to fit inside the 19.05 mm height
+        pdf.image(temp_img_path, x=1, y=1, w=17, h=17)
         
-        # 2. Draw Text next to it
-        pdf.set_font("helvetica", style="B", size=10)
+        # 2. Draw Text next to the QR code
+        # We start X at 19 mm since QR takes up 1-18 mm
+        pdf.set_font("helvetica", style="B", size=8)
         
-        # Start text at x=25 mm
-        pdf.set_xy(25, 4)
-        pdf.cell(w=0, h=5, text=f"ID: {loc_id}", new_x="LMARGIN", new_y="NEXT")
+        # Start text at x=19 mm, y=2 mm
+        pdf.set_xy(19, 2)
+        pdf.cell(w=0, h=4, text="160502", new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_font("helvetica", size=9)
-        pdf.set_xy(25, 10)
-        pdf.cell(w=0, h=5, text=f"Patient-Visit: {pv_id}", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", size=7)
+        pdf.set_xy(19, 6)
+        pdf.cell(w=0, h=4, text=pv_id, new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_xy(25, 16)
-        pdf.cell(w=0, h=5, text=f"Type: {sp_type}", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_xy(19, 10)
+        pdf.cell(w=0, h=4, text=f"{sp_type} {sp_number}", new_x="LMARGIN", new_y="NEXT")
+        
+        pdf.set_xy(19, 14)
+        pdf.cell(w=0, h=4, text=loc_id, new_x="LMARGIN", new_y="NEXT")
         
         # Cleanup temp file
         os.remove(temp_img_path)
