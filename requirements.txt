@@ -8,7 +8,6 @@ st-gsheets-connection
 gspread
 python-dotenv
 pyarrow
-pyzbar
 opencv-python-headless
 numpy
 pytz

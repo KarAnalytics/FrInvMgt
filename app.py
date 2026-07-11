@@ -10,7 +10,6 @@ import io
 import label_generator
 import cv2
 import numpy as np
-from pyzbar.pyzbar import decode
 
 st.set_page_config(page_title="Freezer Inventory Management", layout="wide")
 
@@ -388,9 +387,10 @@ def show_scan_aliquots():
             opencv_image = cv2.imdecode(file_bytes, 1)
             
             # Decode the QR code
-            decoded_objects = decode(opencv_image)
-            if decoded_objects:
-                scanned_loc_id = decoded_objects[0].data.decode("utf-8")
+            qr_detector = cv2.QRCodeDetector()
+            data, _, _ = qr_detector.detectAndDecode(opencv_image)
+            if data:
+                scanned_loc_id = data
                 st.success(f"Successfully scanned QR Code: **{scanned_loc_id}**")
             else:
                 st.warning("No QR code detected in the image. Please try again or ensure the QR code is clearly visible.")
